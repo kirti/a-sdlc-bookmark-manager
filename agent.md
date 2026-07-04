@@ -6,8 +6,8 @@
 > through `merge_agent_md.py`.
 
 <!-- MERGE:META
-last_updated: 2026-07-04T22:08:43.490951+00:00
-last_updated_by_task: cicd-http
+last_updated: 2026-07-04T22:12:15.098323+00:00
+last_updated_by_task: learning-2026-07
 -->
 
 ## Coding Rules
@@ -44,6 +44,7 @@ last_updated_by_task: cicd-http
 - Use `kotlin.test` or JUnit5 with `@Test`; one assertion concern per test method. _(source: bookmark-manager)_
 - Do not hit real external APIs or network resources in unit tests. _(source: bookmark-manager)_
 - Every HTTP endpoint must have a matching Postman v2.1 request with a status-code assertion, runnable via Newman (the api-tester gate) — including the negative cases (409 duplicate, 404 not-found). _(source: bookmark-manager-http)_
+- Before the pre-push gate, every acceptance criterion and every edge case listed in the task's requirements.md must have at least one corresponding test. A stated criterion or edge case shipped without a test is a gate failure, not a follow-up. (Stage 10 learning: this pattern caused two of three round-1 code-review rejections on bookmark-manager-http.) _(source: learning-2026-07)_
 <!-- /MERGE:SECTION -->
 
 ## Naming Conventions
