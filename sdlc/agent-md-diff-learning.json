@@ -1,0 +1,10 @@
+{
+  "request_id": "learning-2026-07",
+  "changes": [
+    {
+      "section": "testing_rules",
+      "action": "append",
+      "content": "Before the pre-push gate, every acceptance criterion and every edge case listed in the task's requirements.md must have at least one corresponding test. A stated criterion or edge case shipped without a test is a gate failure, not a follow-up. (Stage 10 learning: this pattern caused two of three round-1 code-review rejections on bookmark-manager-http.)"
+    }
+  ]
+}

@@ -7,7 +7,18 @@ import java.nio.file.StandardCopyOption
 
 sealed class Result {
     data class Ok(val message: String) : Result()
-    data class Err(val error: String) : Result()
+
+    // Typed error hierarchy so callers (CLI and HTTP layer) can map each failure
+    // to the right outcome (e.g. HTTP 409 vs 404 vs 400) without string-matching.
+    sealed class Err(val error: String) : Result() {
+        data class DuplicateUrl(val url: String) :
+            Err("Bookmark with URL '$url' already exists")
+
+        data class NotFound(val url: String) :
+            Err("Bookmark with URL '$url' not found")
+
+        data class Validation(val message: String) : Err(message)
+    }
 }
 
 class BookmarkStore(private val filePath: Path) {
@@ -41,7 +52,7 @@ class BookmarkStore(private val filePath: Path) {
     fun add(url: String, title: String, tag: String?): Result {
         val bookmarks = load().toMutableList()
         if (bookmarks.any { it.url == url }) {
-            return Result.Err("Bookmark with URL '$url' already exists")
+            return Result.Err.DuplicateUrl(url)
         }
         bookmarks.add(Bookmark(url = url, title = title, tag = tag))
         save(bookmarks)
@@ -54,12 +65,12 @@ class BookmarkStore(private val filePath: Path) {
 
     fun update(url: String, newTitle: String?, newTag: String?): Result {
         if (newTitle == null && newTag == null) {
-            return Result.Err("At least one of --title or --tag must be provided for update")
+            return Result.Err.Validation("At least one of --title or --tag must be provided for update")
         }
         val bookmarks = load().toMutableList()
         val index = bookmarks.indexOfFirst { it.url == url }
         if (index == -1) {
-            return Result.Err("Bookmark with URL '$url' not found")
+            return Result.Err.NotFound(url)
         }
         val existing = bookmarks[index]
         bookmarks[index] = existing.copy(
@@ -74,7 +85,7 @@ class BookmarkStore(private val filePath: Path) {
         val bookmarks = load().toMutableList()
         val removed = bookmarks.removeIf { it.url == url }
         if (!removed) {
-            return Result.Err("Bookmark with URL '$url' not found")
+            return Result.Err.NotFound(url)
         }
         save(bookmarks)
         return Result.Ok("Bookmark deleted: $url")

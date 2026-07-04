@@ -17,10 +17,35 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: Make gradlew executable
         run: chmod +x gradlew
-      - name: Run tests
+      - name: Run unit tests
         run: ./gradlew test
+      - name: Build fat JAR
+        run: ./gradlew shadowJar
+      - name: Start HTTP server
+        run: |
+          JAR=$(ls build/libs/*-all.jar | head -1)
+          BOOKMARKS_FILE=$(mktemp -u /tmp/bm-ci-XXXX.json) BIND_HOST=127.0.0.1 PORT=8080 \
+            java -cp "$JAR" ServerKt &
+          echo $! > server.pid
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null; then
+              echo "server is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "server did not become healthy in time" >&2; exit 1
+      - name: Run API tests (Newman)
+        run: npx --yes newman run postman/collection.json -e postman/environment.json
+      - name: Stop HTTP server
+        if: always()
+        run: kill "$(cat server.pid)" 2>/dev/null || true
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -28,6 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
+    env:
+      # Empty unless the repo defines the secret; the deploy step is skipped when empty.
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -43,3 +72,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/libs/*-all.jar
+      - name: Compute lowercase image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.name }}:latest
+      - name: Trigger deploy
+        # Only runs when a deploy hook secret is configured. Deploy happens strictly after
+        # unit tests, API tests, JAR release, and image publish have all succeeded — never
+        # via the deploy platform's own auto-deploy-on-push (which would bypass this gate).
+        if: ${{ env.RENDER_DEPLOY_HOOK != '' }}
+        run: curl -fsSL -X POST "$RENDER_DEPLOY_HOOK"
