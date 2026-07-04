@@ -133,4 +133,17 @@ class BookmarkStoreTest {
             path.deleteIfExists()
         }
     }
+
+    @Test
+    fun `malformed store file surfaces a clear error`() {
+        val path = createTempFile(prefix = "bookmarks-bad-", suffix = ".json")
+        try {
+            java.nio.file.Files.writeString(path, "{ this is not valid json ")
+            val store = BookmarkStore(path)
+            val ex = assertFailsWith<IllegalStateException> { store.list() }
+            assertTrue(ex.message!!.contains(path.toString()))
+        } finally {
+            path.deleteIfExists()
+        }
+    }
 }

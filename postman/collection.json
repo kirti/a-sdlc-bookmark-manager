@@ -1,0 +1,240 @@
+{
+  "info": {
+    "name": "bookmark-manager",
+    "description": "HTTP API tests for the bookmark-manager service. Self-cleaning: adds a distinctive bookmark, exercises every endpoint (incl. negative cases), then deletes it, so the run is repeatable against a shared store.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "testUrl", "value": "https://newman-test.example/bm" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('health returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('status is ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add bookmark",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/bookmarks", "host": ["{{baseUrl}}"], "path": ["bookmarks"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"url\":\"{{testUrl}}\",\"title\":\"Newman Test\",\"tag\":\"news\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('add returns 201', function () { pm.response.to.have.status(201); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add duplicate (expect 409)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/bookmarks", "host": ["{{baseUrl}}"], "path": ["bookmarks"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"url\":\"{{testUrl}}\",\"title\":\"Duplicate\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('duplicate add returns 409', function () { pm.response.to.have.status(409); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List all",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/bookmarks", "host": ["{{baseUrl}}"], "path": ["bookmarks"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('list returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('list is an array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search by tag (hit)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/bookmarks?tag=news",
+          "host": ["{{baseUrl}}"],
+          "path": ["bookmarks"],
+          "query": [{ "key": "tag", "value": "news" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('search returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('search finds the test bookmark', function () {",
+              "  var urls = pm.response.json().map(function (b) { return b.url; });",
+              "  pm.expect(urls).to.include(pm.variables.get('testUrl'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search by tag (miss, empty)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/bookmarks?tag=__no_such_tag__",
+          "host": ["{{baseUrl}}"],
+          "path": ["bookmarks"],
+          "query": [{ "key": "tag", "value": "__no_such_tag__" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('search miss returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('search miss is empty', function () { pm.expect(pm.response.json()).to.eql([]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update bookmark",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/bookmarks", "host": ["{{baseUrl}}"], "path": ["bookmarks"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"url\":\"{{testUrl}}\",\"title\":\"Updated Title\",\"tag\":\"updated\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('update returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('title is updated', function () { pm.expect(pm.response.json().title).to.eql('Updated Title'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update missing (expect 404)",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/bookmarks", "host": ["{{baseUrl}}"], "path": ["bookmarks"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"url\":\"https://does-not-exist.example/none\",\"title\":\"X\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('update missing returns 404', function () { pm.response.to.have.status(404); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete bookmark",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/bookmarks?url={{testUrl}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["bookmarks"],
+          "query": [{ "key": "url", "value": "{{testUrl}}" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('delete returns 200', function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete missing (expect 404)",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/bookmarks?url={{testUrl}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["bookmarks"],
+          "query": [{ "key": "url", "value": "{{testUrl}}" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('delete missing returns 404', function () { pm.response.to.have.status(404); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

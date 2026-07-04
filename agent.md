@@ -6,8 +6,8 @@
 > through `merge_agent_md.py`.
 
 <!-- MERGE:META
-last_updated: 2026-07-04T20:02:01.437535+00:00
-last_updated_by_task: cicd-github-actions
+last_updated: 2026-07-04T22:08:43.490951+00:00
+last_updated_by_task: cicd-http
 -->
 
 ## Coding Rules
@@ -20,6 +20,8 @@ last_updated_by_task: cicd-github-actions
 - Use a sealed `Result` type (Ok/Err) for all store operations that can fail — never use exceptions for expected error paths (duplicate URL, not found). _(source: bookmark-manager-crud)_
 - URL is the natural key for `BookmarkStore`; uniqueness is enforced at the store layer, not at the data-class level. _(source: bookmark-manager-crud)_
 - Always `chmod +x gradlew` before any `./gradlew` invocation in CI — Linux runners do not preserve file permissions from git. _(source: cicd-github-actions)_
+- When a resource key can contain URL-reserved characters (e.g. a bookmark URL), pass it in the request body or query string, never embedded in the path. _(source: bookmark-manager-http)_
+- Emit structured single-line log records (fields: ts, component, op/method, result/status, latency_ms) for every store operation and HTTP request; never log full store-file contents. _(source: bookmark-manager-http)_
 <!-- /MERGE:SECTION -->
 
 ## Architecture Rules
@@ -31,6 +33,9 @@ last_updated_by_task: cicd-github-actions
 - CI workflow has two jobs: `test` (runs on every push/PR) and `release` (runs on `v*.*.*` tags only, needs `test`). Never merge these into one job. _(source: cicd-github-actions)_
 - The `release` job must declare `permissions: contents: write` explicitly and only on that job — do not grant write permissions to the whole workflow. _(source: cicd-github-actions)_
 - Use the built-in `GITHUB_TOKEN` for release creation — never introduce a PAT or extra secret for operations the built-in token already covers. _(source: cicd-github-actions)_
+- Every service exposes a thin Ktor (Netty) HTTP layer that wraps the domain store 1:1 and holds no business logic of its own. A `GET /health` endpoint is mandatory — the api-tester gate polls it before running the Postman suite. (The existing 'no new HTTP client library' rule concerns clients; a Ktor server is the standing server choice and does not conflict.) _(source: bookmark-manager-http)_
+- HTTP status mapping is fixed: store `Err.DuplicateUrl` -> 409, `Err.NotFound` -> 404, malformed/missing request body -> 400, store IO/parse failure -> 500. _(source: bookmark-manager-http)_
+- CI `test` job runs unit tests AND the Newman API suite (start the fat JAR's ServerKt on 127.0.0.1, poll GET /health, then `newman run postman/collection.json`). The `release` job (tags only, needs test) builds and pushes the Docker image to `ghcr.io/<owner>/<repo>` (lowercased) using the built-in GITHUB_TOKEN with `packages: write`, and triggers deploy only via a gated Deploy-Hook step after all tests pass — never the deploy platform's own auto-deploy-on-push. _(source: cicd-http)_
 <!-- /MERGE:SECTION -->
 
 ## Testing Rules
@@ -38,6 +43,7 @@ last_updated_by_task: cicd-github-actions
 <!-- MERGE:SECTION testing_rules -->
 - Use `kotlin.test` or JUnit5 with `@Test`; one assertion concern per test method. _(source: bookmark-manager)_
 - Do not hit real external APIs or network resources in unit tests. _(source: bookmark-manager)_
+- Every HTTP endpoint must have a matching Postman v2.1 request with a status-code assertion, runnable via Newman (the api-tester gate) — including the negative cases (409 duplicate, 404 not-found). _(source: bookmark-manager-http)_
 <!-- /MERGE:SECTION -->
 
 ## Naming Conventions

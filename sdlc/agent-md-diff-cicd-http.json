@@ -1,0 +1,10 @@
+{
+  "request_id": "cicd-http",
+  "changes": [
+    {
+      "section": "architecture_rules",
+      "action": "append",
+      "content": "CI `test` job runs unit tests AND the Newman API suite (start the fat JAR's ServerKt on 127.0.0.1, poll GET /health, then `newman run postman/collection.json`). The `release` job (tags only, needs test) builds and pushes the Docker image to `ghcr.io/<owner>/<repo>` (lowercased) using the built-in GITHUB_TOKEN with `packages: write`, and triggers deploy only via a gated Deploy-Hook step after all tests pass — never the deploy platform's own auto-deploy-on-push."
+    }
+  ]
+}

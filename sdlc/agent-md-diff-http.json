@@ -1,0 +1,30 @@
+{
+  "request_id": "bookmark-manager-http",
+  "changes": [
+    {
+      "section": "architecture_rules",
+      "action": "append",
+      "content": "Every service exposes a thin Ktor (Netty) HTTP layer that wraps the domain store 1:1 and holds no business logic of its own. A `GET /health` endpoint is mandatory — the api-tester gate polls it before running the Postman suite. (The existing 'no new HTTP client library' rule concerns clients; a Ktor server is the standing server choice and does not conflict.)"
+    },
+    {
+      "section": "architecture_rules",
+      "action": "append",
+      "content": "HTTP status mapping is fixed: store `Err.DuplicateUrl` -> 409, `Err.NotFound` -> 404, malformed/missing request body -> 400, store IO/parse failure -> 500."
+    },
+    {
+      "section": "coding_rules",
+      "action": "append",
+      "content": "When a resource key can contain URL-reserved characters (e.g. a bookmark URL), pass it in the request body or query string, never embedded in the path."
+    },
+    {
+      "section": "coding_rules",
+      "action": "append",
+      "content": "Emit structured single-line log records (fields: ts, component, op/method, result/status, latency_ms) for every store operation and HTTP request; never log full store-file contents."
+    },
+    {
+      "section": "testing_rules",
+      "action": "append",
+      "content": "Every HTTP endpoint must have a matching Postman v2.1 request with a status-code assertion, runnable via Newman (the api-tester gate) — including the negative cases (409 duplicate, 404 not-found)."
+    }
+  ]
+}

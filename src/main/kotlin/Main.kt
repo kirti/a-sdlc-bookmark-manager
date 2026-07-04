@@ -1,13 +1,4 @@
-import java.nio.file.Path
 import kotlin.system.exitProcess
-
-private val DEFAULT_BOOKMARKS_FILE: String =
-    "${System.getProperty("user.home")}/.bookmarks.json"
-
-private fun resolveBookmarksPath(): Path {
-    val envPath = System.getenv("BOOKMARKS_FILE")
-    return Path.of(envPath ?: DEFAULT_BOOKMARKS_FILE)
-}
 
 private fun parseArgs(args: Array<String>): Map<String, String> {
     val map = mutableMapOf<String, String>()
@@ -24,80 +15,91 @@ private fun parseArgs(args: Array<String>): Map<String, String> {
     return map
 }
 
-private fun exitWithError(message: String): Nothing {
-    System.err.println("Error: $message")
-    exitProcess(1)
+private fun printBookmarks(bookmarks: List<Bookmark>) {
+    bookmarks.forEach { b ->
+        val tagPart = b.tag?.let { " [tag: $it]" } ?: ""
+        println("${b.title} <${b.url}>$tagPart")
+    }
 }
 
-fun main(args: Array<String>) {
-    if (args.isEmpty()) {
-        exitWithError(
-            "Usage: bookmark <command> [options]\n" +
-            "Commands: add, list, search, update, delete"
-        )
-    }
+/** Prints an error to stderr and returns a non-zero exit code (does not exit the process). */
+private fun fail(message: String): Int {
+    System.err.println("Error: $message")
+    return 1
+}
 
-    val command = args[0]
-    val remaining = args.drop(1).toTypedArray()
-    val params = parseArgs(remaining)
-    val store = BookmarkStore(resolveBookmarksPath())
-
+/** Runs a single subcommand and returns the process exit code (0 = success). */
+private fun runCommand(command: String, params: Map<String, String>, store: BookmarkStore): Int {
     when (command) {
         "add" -> {
-            val url = params["url"] ?: exitWithError("--url is required for 'add'")
-            val title = params["title"] ?: exitWithError("--title is required for 'add'")
-            val tag = params["tag"]
-            when (val result = store.add(url, title, tag)) {
-                is Result.Ok -> println(result.message)
-                is Result.Err -> exitWithError(result.error)
+            val url = params["url"] ?: return fail("--url is required for 'add'")
+            val title = params["title"] ?: return fail("--title is required for 'add'")
+            return when (val result = store.add(url, title, params["tag"])) {
+                is Result.Ok -> { println(result.message); 0 }
+                is Result.Err -> fail(result.error)
             }
         }
 
         "list" -> {
             val bookmarks = store.list()
-            if (bookmarks.isEmpty()) {
-                println("No bookmarks found.")
-            } else {
-                bookmarks.forEach { b ->
-                    val tagPart = b.tag?.let { " [tag: $it]" } ?: ""
-                    println("${b.title} <${b.url}>$tagPart")
-                }
-            }
+            if (bookmarks.isEmpty()) println("No bookmarks found.") else printBookmarks(bookmarks)
+            return 0
         }
 
         "search" -> {
-            val tag = params["tag"] ?: exitWithError("--tag is required for 'search'")
+            val tag = params["tag"] ?: return fail("--tag is required for 'search'")
             val bookmarks = store.findByTag(tag)
-            if (bookmarks.isEmpty()) {
-                println("No bookmarks found with tag '$tag'.")
-            } else {
-                bookmarks.forEach { b ->
-                    val tagPart = b.tag?.let { " [tag: $it]" } ?: ""
-                    println("${b.title} <${b.url}>$tagPart")
-                }
-            }
+            if (bookmarks.isEmpty()) println("No bookmarks found with tag '$tag'.") else printBookmarks(bookmarks)
+            return 0
         }
 
         "update" -> {
-            val url = params["url"] ?: exitWithError("--url is required for 'update'")
-            val newTitle = params["title"]
-            val newTag = params["tag"]
-            when (val result = store.update(url, newTitle, newTag)) {
-                is Result.Ok -> println(result.message)
-                is Result.Err -> exitWithError(result.error)
+            val url = params["url"] ?: return fail("--url is required for 'update'")
+            return when (val result = store.update(url, params["title"], params["tag"])) {
+                is Result.Ok -> { println(result.message); 0 }
+                is Result.Err -> fail(result.error)
             }
         }
 
         "delete" -> {
-            val url = params["url"] ?: exitWithError("--url is required for 'delete'")
-            when (val result = store.delete(url)) {
-                is Result.Ok -> println(result.message)
-                is Result.Err -> exitWithError(result.error)
+            val url = params["url"] ?: return fail("--url is required for 'delete'")
+            return when (val result = store.delete(url)) {
+                is Result.Ok -> { println(result.message); 0 }
+                is Result.Err -> fail(result.error)
             }
         }
 
-        else -> exitWithError(
-            "Unknown command '$command'. Valid commands: add, list, search, update, delete"
-        )
+        else -> return fail("Unknown command '$command'. Valid commands: add, list, search, update, delete")
     }
+}
+
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
+        System.err.println(
+            "Error: Usage: bookmark <command> [options]\n" +
+            "Commands: add, list, search, update, delete"
+        )
+        exitProcess(1)
+    }
+
+    val command = args[0]
+    val params = parseArgs(args.drop(1).toTypedArray())
+    // --file overrides BOOKMARKS_FILE env var, which overrides the default path.
+    val store = BookmarkStore(resolveBookmarksPath(params["file"]))
+
+    val exitCode = try {
+        runCommand(command, params, store)
+    } catch (e: IllegalStateException) {
+        // Store file present but unparseable/truncated — surface cleanly, not as a stack trace.
+        Log.event("component" to "store", "op" to command, "result" to "io_error")
+        fail(e.message ?: "Failed to read bookmarks file")
+    }
+
+    Log.event(
+        "component" to "cli",
+        "subcommand" to command,
+        "result" to if (exitCode == 0) "ok" else "err",
+        "exit_code" to exitCode
+    )
+    exitProcess(exitCode)
 }
